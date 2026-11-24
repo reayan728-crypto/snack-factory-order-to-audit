@@ -1,0 +1,130 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "System user with explicit role-based access control.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "name": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "role": { "type": "string", "enum": ["salesman", "admin", "production", "accountant", "owner"] },
+        "isActive": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "name", "role", "isActive", "createdAt"]
+    },
+    "Item": {
+      "title": "Item",
+      "description": "Raw material, packaging, or finished good catalog record (no editable stock balance).",
+      "type": "object",
+      "properties": {
+        "sku": { "type": "string", "minLength": 2, "maxLength": 40 },
+        "name": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "itemType": { "type": "string", "enum": ["raw_material", "packaging", "finished_good"] },
+        "baseUnit": { "type": "string", "enum": ["g", "ml", "piece", "packet"] },
+        "standardCostPaise": { "type": "integer" },
+        "costUnit": { "type": "string", "minLength": 1, "maxLength": 20 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["sku", "name", "itemType", "baseUnit", "standardCostPaise", "costUnit", "createdAt"]
+    },
+    "Customer": {
+      "title": "Customer",
+      "description": "Customer master with state and GSTIN.",
+      "type": "object",
+      "properties": {
+        "code": { "type": "string", "minLength": 2, "maxLength": 40 },
+        "name": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "customerType": { "type": "string", "enum": ["retailer", "distributor", "wholesaler"] },
+        "state": { "type": "string", "minLength": 2, "maxLength": 60 },
+        "gstin": { "type": "string", "minLength": 15, "maxLength": 15 },
+        "salesmanUid": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["code", "name", "customerType", "state", "gstin", "salesmanUid", "createdAt"]
+    },
+    "StockMovement": {
+      "title": "StockMovement",
+      "description": "Append-only stock ledger entry in base unit.",
+      "type": "object",
+      "properties": {
+        "itemId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "movementType": {
+          "type": "string",
+          "enum": [
+            "OPENING_BALANCE",
+            "PURCHASE_RECEIPT",
+            "PRODUCTION_CONSUME",
+            "PRODUCTION_OUTPUT",
+            "ORDER_DISPATCH",
+            "INVOICE_SALE",
+            "CREDIT_NOTE_RETURN",
+            "ADJUSTMENT_IN",
+            "ADJUSTMENT_OUT"
+          ]
+        },
+        "quantityBase": { "type": "integer" },
+        "sourceDocType": { "type": "string", "minLength": 1, "maxLength": 40 },
+        "sourceDocId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "createdByUid": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["itemId", "movementType", "quantityBase", "sourceDocType", "sourceDocId", "createdByUid", "createdAt"]
+    },
+    "Invoice": {
+      "title": "Invoice",
+      "description": "Sales invoice with integer paise totals; cancelled only via credit note.",
+      "type": "object",
+      "properties": {
+        "invoiceNumber": { "type": "string", "minLength": 3, "maxLength": 40 },
+        "customerId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "status": { "type": "string", "enum": ["DRAFT", "POSTED", "CANCELLED_BY_CREDIT_NOTE"] },
+        "subtotalPaise": { "type": "integer" },
+        "taxPaise": { "type": "integer" },
+        "totalPaise": { "type": "integer" },
+        "createdByUid": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["invoiceNumber", "customerId", "status", "subtotalPaise", "taxPaise", "totalPaise", "createdByUid", "createdAt"]
+    },
+    "AuditLog": {
+      "title": "AuditLog",
+      "description": "Append-only edit and posting audit record.",
+      "type": "object",
+      "properties": {
+        "entityType": { "type": "string", "minLength": 1, "maxLength": 40 },
+        "entityId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "action": { "type": "string", "minLength": 1, "maxLength": 40 },
+        "changedByUid": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "changedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["entityType", "entityId", "action", "changedByUid", "changedAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/UserProfile" },
+      "description": "User role profiles partitioned by Firebase UID."
+    },
+    "/items/{itemId}": {
+      "schema": { "$ref": "#/entities/Item" },
+      "description": "Catalog of raw materials, packaging, and finished goods."
+    },
+    "/customers/{customerId}": {
+      "schema": { "$ref": "#/entities/Customer" },
+      "description": "Customers with state and GSTIN."
+    },
+    "/stockMovements/{movementId}": {
+      "schema": { "$ref": "#/entities/StockMovement" },
+      "description": "Append-only stock ledger."
+    },
+    "/invoices/{invoiceId}": {
+      "schema": { "$ref": "#/entities/Invoice" },
+      "description": "Non-deletable invoices."
+    },
+    "/auditLogs/{auditId}": {
+      "schema": { "$ref": "#/entities/AuditLog" },
+      "description": "Append-only audit trail."
+    }
+  }
+}

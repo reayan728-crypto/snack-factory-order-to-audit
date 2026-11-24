@@ -1,0 +1,202 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null && request.auth.token.email_verified == true;
+    }
+
+    function isBootstrappedAdmin() {
+      return isSignedIn() && request.auth.token.email == '251270339372@srcas.ac.in';
+    }
+
+    function isAdmin() {
+      return isBootstrappedAdmin() || (
+        isSignedIn() && exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+      );
+    }
+
+    function isValidUserProfile(data) {
+      return data.keys().hasAll(['uid', 'name', 'role', 'isActive', 'createdAt'])
+        && data.keys().hasOnly(['uid', 'name', 'role', 'isActive', 'createdAt'])
+        && data.uid is string && data.uid.size() >= 1 && data.uid.size() <= 128
+        && data.name is string && data.name.size() >= 1 && data.name.size() <= 120
+        && data.role in ['salesman', 'admin', 'production', 'accountant', 'owner']
+        && data.isActive is bool
+        && data.createdAt == request.time;
+    }
+
+    function isValidItem(data) {
+      return data.keys().hasAll(['sku', 'name', 'itemType', 'baseUnit', 'standardCostPaise', 'costUnit', 'createdAt'])
+        && data.keys().hasOnly(['sku', 'name', 'itemType', 'baseUnit', 'standardCostPaise', 'costUnit', 'createdAt'])
+        && data.sku is string && data.sku.size() >= 2 && data.sku.size() <= 40
+        && data.name is string && data.name.size() >= 1 && data.name.size() <= 120
+        && data.itemType in ['raw_material', 'packaging', 'finished_good']
+        && data.baseUnit in ['g', 'ml', 'piece', 'packet']
+        && data.standardCostPaise is int && data.standardCostPaise >= 0
+        && data.costUnit is string && data.costUnit.size() >= 1 && data.costUnit.size() <= 20
+        && data.createdAt == request.time;
+    }
+
+    function isValidCustomer(data) {
+      return data.keys().hasAll(['code', 'name', 'customerType', 'state', 'gstin', 'salesmanUid', 'createdAt'])
+        && data.keys().hasOnly(['code', 'name', 'customerType', 'state', 'gstin', 'salesmanUid', 'createdAt'])
+        && data.code is string && data.code.size() >= 2 && data.code.size() <= 40
+        && data.name is string && data.name.size() >= 1 && data.name.size() <= 120
+        && data.customerType in ['retailer', 'distributor', 'wholesaler']
+        && data.state is string && data.state.size() >= 2 && data.state.size() <= 60
+        && data.gstin is string && data.gstin.size() == 15
+        && data.salesmanUid is string && data.salesmanUid.size() >= 1 && data.salesmanUid.size() <= 128
+        && data.createdAt == request.time;
+    }
+
+    function isValidStockMovement(data) {
+      return data.keys().hasAll(['itemId', 'movementType', 'quantityBase', 'sourceDocType', 'sourceDocId', 'createdByUid', 'createdAt'])
+        && data.keys().hasOnly(['itemId', 'movementType', 'quantityBase', 'sourceDocType', 'sourceDocId', 'createdByUid', 'createdAt'])
+        && isValidId(data.itemId)
+        && data.movementType in [
+          'OPENING_BALANCE',
+          'PURCHASE_RECEIPT',
+          'PRODUCTION_CONSUME',
+          'PRODUCTION_OUTPUT',
+          'ORDER_DISPATCH',
+          'INVOICE_SALE',
+          'CREDIT_NOTE_RETURN',
+          'ADJUSTMENT_IN',
+          'ADJUSTMENT_OUT'
+        ]
+        && data.quantityBase is int && data.quantityBase != 0
+        && data.sourceDocType is string && data.sourceDocType.size() >= 1 && data.sourceDocType.size() <= 40
+        && isValidId(data.sourceDocId)
+        && data.createdByUid == request.auth.uid
+        && data.createdAt == request.time;
+    }
+
+    function isValidInvoice(data) {
+      return data.keys().hasAll(['invoiceNumber', 'customerId', 'status', 'subtotalPaise', 'taxPaise', 'totalPaise', 'createdByUid', 'createdAt'])
+        && data.keys().hasOnly(['invoiceNumber', 'customerId', 'status', 'subtotalPaise', 'taxPaise', 'totalPaise', 'createdByUid', 'createdAt'])
+        && data.invoiceNumber is string && data.invoiceNumber.size() >= 3 && data.invoiceNumber.size() <= 40
+        && isValidId(data.customerId)
+        && data.status in ['DRAFT', 'POSTED', 'CANCELLED_BY_CREDIT_NOTE']
+        && data.subtotalPaise is int && data.subtotalPaise >= 0
+        && data.taxPaise is int && data.taxPaise >= 0
+        && data.totalPaise is int && data.totalPaise >= 0
+        && data.createdByUid is string && data.createdByUid.size() >= 1 && data.createdByUid.size() <= 128
+        && data.createdAt is timestamp;
+    }
+
+    function isValidAuditLog(data) {
+      return data.keys().hasAll(['entityType', 'entityId', 'action', 'changedByUid', 'changedAt'])
+        && data.keys().hasOnly(['entityType', 'entityId', 'action', 'changedByUid', 'changedAt'])
+        && data.entityType is string && data.entityType.size() >= 1 && data.entityType.size() <= 40
+        && isValidId(data.entityId)
+        && data.action is string && data.action.size() >= 1 && data.action.size() <= 40
+        && data.changedByUid == request.auth.uid
+        && data.changedAt == request.time;
+    }
+
+    match /admins/{adminUid} {
+      allow get: if isSignedIn() && isValidId(adminUid) && request.auth.uid == adminUid;
+      allow list, create, update, delete: if false;
+    }
+
+    match /users/{userId} {
+      allow get: if isSignedIn() && isValidId(userId) && (request.auth.uid == userId || isAdmin());
+      allow list: if isAdmin();
+      allow create: if isAdmin() && isValidId(userId) && isValidUserProfile(incoming()) && incoming().uid == userId;
+      allow update: if isAdmin()
+        && isValidId(userId)
+        && isValidUserProfile(incoming())
+        && incoming().uid == existing().uid
+        && incoming().createdAt == existing().createdAt
+        && incoming().diff(existing()).affectedKeys().hasOnly(['name', 'role', 'isActive']);
+      allow delete: if false;
+    }
+
+    match /items/{itemId} {
+      allow get: if isSignedIn() && isValidId(itemId);
+      allow list: if isSignedIn() && resource.data.baseUnit in ['g', 'ml', 'piece', 'packet'];
+      allow create: if isAdmin() && isValidId(itemId) && isValidItem(incoming());
+      allow update: if isAdmin()
+        && isValidId(itemId)
+        && isValidItem(incoming())
+        && incoming().sku == existing().sku
+        && incoming().baseUnit == existing().baseUnit
+        && incoming().createdAt == existing().createdAt
+        && incoming().diff(existing()).affectedKeys().hasOnly(['name', 'standardCostPaise', 'costUnit']);
+      allow delete: if false;
+    }
+
+    match /customers/{customerId} {
+      allow get: if isSignedIn() && isValidId(customerId) && (isAdmin() || existing().salesmanUid == request.auth.uid);
+      allow list: if isSignedIn() && (isAdmin() || resource.data.salesmanUid == request.auth.uid);
+      allow create: if isSignedIn() && isValidId(customerId) && isValidCustomer(incoming()) && (isAdmin() || incoming().salesmanUid == request.auth.uid);
+      allow update: if isSignedIn()
+        && isValidId(customerId)
+        && isValidCustomer(incoming())
+        && incoming().code == existing().code
+        && incoming().salesmanUid == existing().salesmanUid
+        && incoming().createdAt == existing().createdAt
+        && (isAdmin() || existing().salesmanUid == request.auth.uid)
+        && incoming().diff(existing()).affectedKeys().hasOnly(['name', 'state', 'gstin']);
+      allow delete: if false;
+    }
+
+    match /stockMovements/{movementId} {
+      allow get: if isSignedIn() && isValidId(movementId) && (isAdmin() || existing().createdByUid == request.auth.uid);
+      allow list: if isSignedIn() && (isAdmin() || resource.data.createdByUid == request.auth.uid);
+      allow create: if isSignedIn()
+        && isValidId(movementId)
+        && isValidStockMovement(incoming())
+        && exists(/databases/$(database)/documents/items/$(incoming().itemId));
+      allow update, delete: if false;
+    }
+
+    match /invoices/{invoiceId} {
+      allow get: if isSignedIn() && isValidId(invoiceId) && (isAdmin() || existing().createdByUid == request.auth.uid);
+      allow list: if isSignedIn() && (isAdmin() || resource.data.createdByUid == request.auth.uid);
+      allow create: if isSignedIn()
+        && isValidId(invoiceId)
+        && isValidInvoice(incoming())
+        && incoming().createdByUid == request.auth.uid
+        && incoming().createdAt == request.time
+        && exists(/databases/$(database)/documents/customers/$(incoming().customerId));
+      allow update: if isAdmin()
+        && isValidId(invoiceId)
+        && isValidInvoice(incoming())
+        && existing().status == 'POSTED'
+        && incoming().status == 'CANCELLED_BY_CREDIT_NOTE'
+        && incoming().invoiceNumber == existing().invoiceNumber
+        && incoming().customerId == existing().customerId
+        && incoming().subtotalPaise == existing().subtotalPaise
+        && incoming().taxPaise == existing().taxPaise
+        && incoming().totalPaise == existing().totalPaise
+        && incoming().createdByUid == existing().createdByUid
+        && incoming().createdAt == existing().createdAt
+        && incoming().diff(existing()).affectedKeys().hasOnly(['status']);
+      allow delete: if false;
+    }
+
+    match /auditLogs/{auditId} {
+      allow get: if isAdmin() && isValidId(auditId);
+      allow list: if isAdmin();
+      allow create: if isSignedIn() && isValidId(auditId) && isValidAuditLog(incoming());
+      allow update, delete: if false;
+    }
+  }
+}
